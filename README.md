@@ -89,4 +89,4 @@ This project does not currently include a license file. Contact the repository o
 ## Authors
 - **Filip Surname** — [GitHub profile](https://github.com/fstenl)
 - **Matilda Skogman** - [GitHub profile](https://github.com/matildaskogman)
--**Prarthana Duraisamy** - [GitHub profile](https://github.com/medtech-code)
+- **Prarthana Duraisamy** - [GitHub profile](https://github.com/medtech-code)

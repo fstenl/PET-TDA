@@ -86,6 +86,13 @@ By default `run_morph_test()` is executed. Edit the `if __name__ == "__main__"` 
 
 This project does not currently include a license file. Contact the repository owner for usage terms.
 
+## Acknowledgements
+
+This project relies on the following open-source libraries:
+
+- **parallelproj** — Georg Schramm and Kris Thielemans. *Parallelproj—an open-source framework for fast calculation of projections in tomography*. Frontiers in Nuclear Medicine, 2023. DOI: [10.3389/fnume.2023.1324562](https://doi.org/10.3389/fnume.2023.1324562). [github.com/gschramm/parallelproj](https://github.com/gschramm/parallelproj)
+- **scikit-tda** — Saul, Nathaniel and Tralie, Chris. *Scikit-TDA: Topological Data Analysis for Python*. [github.com/scikit-tda](https://github.com/scikit-tda), 2019. DOI: [10.5281/zenodo.2533369](https://doi.org/10.5281/zenodo.2533369)
+
 ## Authors
 - **Filip Stenlund** — [GitHub profile](https://github.com/fstenl)
 - **Matilda Skogman** - [GitHub profile](https://github.com/matildaskogman)

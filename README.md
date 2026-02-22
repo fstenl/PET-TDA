@@ -85,3 +85,8 @@ By default `run_morph_test()` is executed. Edit the `if __name__ == "__main__"` 
 ## License
 
 This project does not currently include a license file. Contact the repository owner for usage terms.
+
+## Authors
+- **Filip Surname** — [GitHub profile](https://github.com/fstenl)
+- **Matilda Skogman** - [GitHub profile](https://github.com/matildaskogman)
+-**Prarthana Duraisamy** - [GitHub profile](https://github.com/medtech-code)

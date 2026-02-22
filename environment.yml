@@ -1,0 +1,16 @@
+name: pet-tda
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy<2
+  - scipy
+  - matplotlib
+  - parallelproj
+  - pytorch
+  - pip:
+    - array_api_compat
+    - scikit-tda

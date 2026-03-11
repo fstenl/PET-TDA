@@ -1,6 +1,6 @@
 import torch
 
-def static_trajectory(center, steps):
+def static_trajectory(center: tuple, steps: int) -> list[tuple]:
     """Generates a static trajectory at a fixed position
 
     Args:
@@ -12,7 +12,7 @@ def static_trajectory(center, steps):
     """
     return [center for _ in range(steps)]
 
-def linear_trajectory(start, end, steps):
+def linear_trajectory(start: tuple, end: tuple, steps: int) -> list[tuple]:
     """Generates a linear path between two points in N dimensions.
 
     Args:
@@ -29,7 +29,7 @@ def linear_trajectory(start, end, steps):
     # Zip them back into tuples of original dimension
     return list(zip(*lin_coords))
 
-def circular_trajectory(radius, center, steps, plane='xy'):
+def circular_trajectory(radius: float, center: tuple, steps: int, plane: str = 'xy') -> list[tuple]:
     """Generates a circular path, compatible with both 2D and 3D.
 
     Args:
@@ -63,7 +63,7 @@ def circular_trajectory(radius, center, steps, plane='xy'):
 
     raise ValueError("Center must be a tuple of length 2 or 3.")
 
-def periodic_trajectory(center, amplitude, steps, frequency=1.0):
+def periodic_trajectory(center: tuple, amplitude: tuple, steps: int, frequency: float = 1.0) -> list[tuple]:
     """Generates a sinusoidal periodic path to simulate breathing or cyclic motion.
 
     Args:
@@ -75,7 +75,7 @@ def periodic_trajectory(center, amplitude, steps, frequency=1.0):
     Returns:
         list: List of center tuples following a sine wave.
     """
-    # Create time steps from 0 to 2*pi * frequency
+    # Create time steps spanning one full cycle 
     t = torch.linspace(0, 2 * torch.pi * frequency, steps)
     sin_t = torch.sin(t)
 

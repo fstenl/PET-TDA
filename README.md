@@ -17,8 +17,13 @@ The pipeline works as follows:
 
 ```
 PET-TDA/
-├── main.py                     # Entry point with three simulation experiments
+├── main.py                     # Entry point with simulation experiments
 ├── environment.yml             # Conda environment specification
+├── phantoms/
+│   ├── primitives.py           # Parameterised geometric phantoms (sphere, box, ellipsoid, morphed, simplex)
+│   ├── trajectories.py         # Motion paths (static, linear, circular, periodic/sinusoidal)
+│   ├── generator.py            # Frame sequence generation and 2D/3D visualisation
+│   └── noise.py                # Noise models (Gaussian, Poisson, salt-and-pepper)
 ├── scanner/
 │   └── scanner.py              # PET scanner geometry, forward projection, LOR sampling
 ├── lines/
@@ -32,13 +37,19 @@ PET-TDA/
 
 ## Experiments
 
-`main.py` provides three runnable experiments:
+`main.py` provides the following runnable experiments:
 
 | Function | Description |
 |---|---|
-| `run_morph_test()` | Morphs a phantom from sphere to cube over several steps and tracks topological changes in H₁. |
-| `run_motion_analysis()` | Translates a sphere phantom along a linear trajectory and measures inter-frame topological distances. |
-| `run_gating_simulation()` | Simulates periodic respiratory motion and produces persistence images suitable for gating or ML classification. |
+| `linear_motion_test()` | Translates a sphere phantom along a linear trajectory and measures inter-frame topological distances. |
+| `deformation_test()` | Morphs a phantom from sphere to cube over several steps and tracks topological changes. |
+| `intra_variability_deformation_test()` | Multiple LOR samples per deformation frame to compare intra-frame noise against inter-frame signal. |
+| `sinusoidal_motion_test()` | Simulates periodic sinusoidal motion and computes inter-frame distances. |
+| `intra_variability_sinusoidal__motion_test()` | Intra-frame variability analysis for the sinusoidal motion scenario. |
+| `size_test(phantom_fn)` | Grows then shrinks a phantom (sphere, box, or ellipsoid) and tracks topological changes. |
+| `intra_variability_size_test()` | Intra-frame variability analysis for the size variation scenario. |
+| `visualize_2d_phantom(shape_type)` | Generates a 2D phantom, projects it, and visualises the Plücker point cloud interactively. |
+| `visualize_sphere_sinogram()` | Displays a sphere phantom alongside its forward-projected sinogram. |
 
 ## Installation
 
@@ -73,7 +84,7 @@ conda activate pet-tda
 python main.py
 ```
 
-By default `run_morph_test()` is executed. Edit the `if __name__ == "__main__"` block in `main.py` to switch experiments.
+By default `size_test(primitives.create_sphere_phantom)` is executed. Edit the `if __name__ == "__main__"` block in `main.py` to switch experiments.
 
 ## Key Concepts
 

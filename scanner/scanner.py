@@ -1,21 +1,45 @@
+import os
 import torch
 import parallelproj
 import matplotlib.pyplot as plt
 from parallelproj import RegularPolygonPETScannerGeometry, RegularPolygonPETLORDescriptor, RegularPolygonPETProjector, SinogramSpatialAxisOrder
 
 import numpy as np
-def generate_lors_from_image(image, projector , num_lors, show=False, device='cpu') -> tuple[torch.Tensor, torch.Tensor]:
+def generate_lors_from_image(
+    image: torch.Tensor,
+    projector: RegularPolygonPETProjector,
+    num_lors: int,
+    show: bool = False,
+    return_sinogram: bool = False,
+    return_adjoint: bool = False,
+    save_path: str | None = None,
+) -> (
+    tuple[torch.Tensor, torch.Tensor]
+    | tuple[torch.Tensor, torch.Tensor, np.ndarray]
+    | tuple[torch.Tensor, torch.Tensor, np.ndarray, np.ndarray]
+):
     """Generates LOR endpoints by sampling from a projected activity image.
 
     Args:
         image (torch.Tensor): 3D tensor representing the activity distribution.
         projector (RegularPolygonPETProjector): Scanner projector for forward projection.
         num_lors (int): Number of LORs to sample.
-        show (bool, optional): Whether to visualize the sinogram and sampled LORs. Defaults to False.
-        device (str): Compute device. Defaults to 'cpu'.
+        show (bool, optional): Whether to visualize the sinogram and sampled LORs.
+            Not thread-safe — use ``return_sinogram=True`` and plot on the main
+            thread when running in parallel. Defaults to False.
+        return_sinogram (bool, optional): If True, return the sampled sinogram
+            image (numpy array) as an additional element so calling code can
+            plot it later on the main thread. Defaults to False.
+        return_adjoint (bool, optional): If True, return the adjoint
+            (back-projected) image of the sampled sinogram as a numpy array.
+            Useful for visualising which voxels are covered by the sampled
+            LORs. Defaults to False.
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: Sampled p1 and p2 coordinates (num_lors, 3).
+        (p1, p2) when both ``return_sinogram`` and ``return_adjoint`` are False.
+        (p1, p2, sinogram_image) when only ``return_sinogram`` is True.
+        (p1, p2, sinogram_image, adjoint_image) when both are True.
+        (p1, p2, adjoint_image) when only ``return_adjoint`` is True.
     """
 
     # Forward project image to create sinogram
@@ -36,40 +60,45 @@ def generate_lors_from_image(image, projector , num_lors, show=False, device='cp
     lor_indices_unique, counts = torch.unique(lor_indices, return_counts=True)
     sampled_sinogram[lor_indices_unique] = counts.float()
     sampled_sinogram = sampled_sinogram.reshape(projector.out_shape)
-    
-    if show:        
-        #fig, ax = plt.subplots(1, 3, figsize=(5, 5))
 
-        slice_idx = projector.out_shape[2] // 2
+    # Pick the plane with the most counts so the visualisation always shows
+    plane_sums = sampled_sinogram.sum(dim=(0, 1))
+    slice_idx = int(plane_sums.argmax())
+    sinogram_img = parallelproj.to_numpy_array(sampled_sinogram[:, :, slice_idx].T)
 
-        """img1 = parallelproj.to_numpy_array(forward[:, :, slice_idx].T)
-        ax[0].imshow(img1, cmap="Greys_r", vmin=0)
-        ax[0].set_title("Forward Projection")
+    # Compute the adjoint (back-projection) of the sampled sinogram
+    adjoint_img = None
+    if return_adjoint:
+        adjoint_vol = projector.adjoint(sampled_sinogram)
+        mid_slice = adjoint_vol.shape[2] // 2
+        adjoint_img = parallelproj.to_numpy_array(adjoint_vol[:, :, mid_slice].T)
 
-        img2 = parallelproj.to_numpy_array(sino_poisson[:, :, slice_idx].T)
-        ax[1].imshow(img2, cmap="Greys_r", vmin=0)
-        ax[1].set_title("Sinogram Poisson Sampled")
-
-        img3 = parallelproj.to_numpy_array(sampled_sinogram[:, :, slice_idx].T)
-        ax[2].imshow(img3, cmap="Greys_r", vmin=0)
-        ax[2].set_title("Sampled LORs in Sinogram Space")
-
-        plt.tight_layout()
-        plt.show()"""
-        img3 = parallelproj.to_numpy_array(sampled_sinogram[:, :, slice_idx].T)
-        plt.figure(figsize=(5, 5))
-        plt.imshow(img3, cmap="Greys_r", vmin=0)
-        #plt.title("Sampled LORs in Sinogram Space")
-        plt.show()
+    if show:
+        fig, ax = plt.subplots()
+        ax.imshow(sinogram_img, cmap="Greys_r", vmin=0)
+        ax.set_title("Sampled LORs")
+        fig.tight_layout()
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            fig.savefig(save_path)
+            plt.close(fig)
+        else:
+            plt.show()
 
     # Map indices to 3D endpoint coordinates
     p1_all, p2_all = projector.lor_descriptor.get_lor_coordinates()
     p1_flat = p1_all.reshape(-1, 3)
     p2_flat = p2_all.reshape(-1, 3)
 
-    return p1_flat[lor_indices], p2_flat[lor_indices]
+    result = (p1_flat[lor_indices], p2_flat[lor_indices])
+    if return_sinogram:
+        result = result + (sinogram_img,)
+    if return_adjoint:
+        result = result + (adjoint_img,)
 
-def get_scanner(xp, dev, show = False) -> RegularPolygonPETProjector:
+    return result
+
+def get_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> RegularPolygonPETProjector:
     """Initializes the PET scanner geometry and projector.
     Args:
         xp: Array module (e.g., torch or numpy).
@@ -78,7 +107,7 @@ def get_scanner(xp, dev, show = False) -> RegularPolygonPETProjector:
     Returns:
         proj (RegularPolygonPETProjector): Configured scanner projector."""
     
-    num_rings = 5
+    num_rings = 10
     scanner = RegularPolygonPETScannerGeometry(
         xp,
         dev,
@@ -86,7 +115,7 @@ def get_scanner(xp, dev, show = False) -> RegularPolygonPETProjector:
         num_sides=12,
         num_lor_endpoints_per_side=15,
         lor_spacing=2.3,
-        ring_positions=xp.linspace(-10, 10, num_rings),
+        ring_positions=xp.linspace(-20, 20, num_rings),
         symmetry_axis=2,
     )
 
@@ -94,23 +123,29 @@ def get_scanner(xp, dev, show = False) -> RegularPolygonPETProjector:
         scanner,
         radial_trim=10,
         sinogram_order=SinogramSpatialAxisOrder.RVP,
-        max_ring_difference=2
+        max_ring_difference=4
     )
 
     proj = RegularPolygonPETProjector(
         lor_descriptor=lor_desc,
-        img_shape=(40, 40, 8),
+        img_shape=(40, 40, 16),
         voxel_size=(2.0, 2.0, 2.0)
     )
 
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    proj.show_geometry(ax=ax)
-    plt.show()
+    if show:
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        proj.show_geometry(ax=ax)
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            fig.savefig(save_path)
+            plt.close(fig)
+        else:
+            plt.show()
 
     return proj
 
-def to_2D(proj):
+def to_2D(proj: RegularPolygonPETProjector) -> tuple[RegularPolygonPETScannerGeometry, RegularPolygonPETLORDescriptor, RegularPolygonPETProjector]:
     dev = proj._dev
     scanner = RegularPolygonPETScannerGeometry(
     proj.xp,

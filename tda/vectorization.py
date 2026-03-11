@@ -1,7 +1,7 @@
 import numpy as np
 from persim import PersistenceImager
 
-def get_persistence_images(diagram_list, hom_dim=1, resolution=(20, 20)):
+def get_persistence_images(diagram_list: list, hom_dim: int = 1, resolution: tuple = (20, 20)) -> np.ndarray:
     """Converts a list of persistence diagrams into vector-ready images.
 
     Args:

@@ -1,6 +1,6 @@
 import torch
 
-def compute_euclidean_distance(coords):
+def compute_euclidean_distance(coords: torch.Tensor) -> torch.Tensor:
     """Computes the pairwise Euclidean distance in Plücker space.
 
     Args:
@@ -11,7 +11,7 @@ def compute_euclidean_distance(coords):
     """
     return torch.cdist(coords, coords, p=2)
 
-def compute_hybrid_weighted_distance(coords, alpha=1.0, beta=1.0):
+def compute_hybrid_weighted_distance(coords: torch.Tensor, alpha: float = 1.0, beta: float = 1.0) -> torch.Tensor:
     """Computes distance using optimized angular and geometric components.
 
     Args:

@@ -1,6 +1,6 @@
 import torch
 
-def to_canonical_plucker(p1, p2):
+def to_canonical_plucker(p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
     """Converts LOR endpoints to standardized Plücker coordinates.
 
     Args:

@@ -1,8 +1,11 @@
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import numpy as np
 from persim import bottleneck, wasserstein
 
 
-def compute_bottleneck_distance(dgm1, dgm2, hom_dim=1):
+def compute_bottleneck_distance(dgm1: list, dgm2: list, hom_dim: int = 1) -> float:
     """
     Computes the Bottleneck distance between two persistence diagrams.
     Measures the maximum distance any single point has to move.
@@ -18,7 +21,7 @@ def compute_bottleneck_distance(dgm1, dgm2, hom_dim=1):
     return bottleneck(dgm1[hom_dim], dgm2[hom_dim])
 
 
-def compute_wasserstein_distance(dgm1, dgm2, hom_dim=1):
+def compute_wasserstein_distance(dgm1: list, dgm2: list, hom_dim: int = 1) -> float:
     """
     Computes the Wasserstein distance between two persistence diagrams.
     Measures the 'total cost' of moving all points from one diagram to the other.
@@ -33,7 +36,7 @@ def compute_wasserstein_distance(dgm1, dgm2, hom_dim=1):
     return wasserstein(dgm1[hom_dim], dgm2[hom_dim])
 
 
-def compute_trajectory_distances(diagram_list, method='wasserstein', hom_dim=1):
+def compute_trajectory_distances(diagram_list: list, method: str = 'wasserstein', hom_dim: int = 1) -> list[float]:
     """
     Computes the topological distance between consecutive frames in a sequence.
 
@@ -55,15 +58,30 @@ def compute_trajectory_distances(diagram_list, method='wasserstein', hom_dim=1):
     return distances
 
 
-def compute_all_pairs_distances(diagram_list, method='wasserstein', hom_dim=1):
+def _compute_pair_distance(diagram_list, i, j, dist_func, hom_dim):
+    """Compute the distance between diagrams of frame i and frame j."""
+    dgm1 = diagram_list[i][hom_dim]
+    dgm2 = diagram_list[j][hom_dim]
+
+    dgm1_finite = dgm1[np.isfinite(dgm1[:, 1])]
+    dgm2_finite = dgm2[np.isfinite(dgm2[:, 1])]
+
+    if len(dgm1_finite) > 0 and len(dgm2_finite) > 0:
+        return i, j, dist_func(dgm1_finite, dgm2_finite)
+    return i, j, 0.0
+
+
+def compute_all_pairs_distances(diagram_list: list, method: str = 'wasserstein', hom_dim: int = 1, max_workers: int | None = None) -> np.ndarray:
     """
     Computes a distance matrix comparing every frame's diagram to every other frame,
     handling infinite death times commonly found in H0.
+    Pairs are computed in parallel using concurrent.futures.
 
     Args:
         diagram_list (list): List of diagrams for each frame.
         method (str): 'wasserstein' or 'bottleneck'.
         hom_dim (int): Homology dimension (usually 1 for loops).
+        max_workers (int | None): Number of threads (None = os.cpu_count()).
 
     Returns:
         np.ndarray: A square symmetric matrix of distances.
@@ -72,24 +90,17 @@ def compute_all_pairs_distances(diagram_list, method='wasserstein', hom_dim=1):
     dist_matrix = np.zeros((num_frames, num_frames))
     dist_func = wasserstein if method == 'wasserstein' else bottleneck
 
-    for i in range(num_frames):
-        for j in range(i + 1, num_frames):
-            # Extract diagrams for the specific dimension
-            dgm1 = diagram_list[i][hom_dim]
-            dgm2 = diagram_list[j][hom_dim]
-
-            # Filter out points with infinite death times (np.inf) to avoid warnings
-            dgm1_finite = dgm1[np.isfinite(dgm1[:, 1])]
-            dgm2_finite = dgm2[np.isfinite(dgm2[:, 1])]
-
-            # Compute distance between frame i and frame j using finite points
-            if len(dgm1_finite) > 0 and len(dgm2_finite) > 0:
-                d = dist_func(dgm1_finite, dgm2_finite)
-            else:
-                # Handle cases where diagrams might be empty after filtering
-                d = 0.0
-
+    with ThreadPoolExecutor(max_workers=max_workers or os.cpu_count()) as executor:
+        future_to_pair = {
+            executor.submit(
+                _compute_pair_distance, diagram_list, i, j, dist_func, hom_dim
+            ): (i, j)
+            for i in range(num_frames)
+            for j in range(i + 1, num_frames)
+        }
+        for future in as_completed(future_to_pair):
+            i, j, d = future.result()
             dist_matrix[i, j] = d
-            dist_matrix[j, i] = d  # Matrix is symmetric
+            dist_matrix[j, i] = d
 
     return dist_matrix

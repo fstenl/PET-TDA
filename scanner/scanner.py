@@ -98,7 +98,7 @@ def generate_lors_from_image(
 
     return result
 
-def get_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> RegularPolygonPETProjector:
+def get_mini_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> RegularPolygonPETProjector:
     """Initializes the PET scanner geometry and projector.
     Args:
         xp: Array module (e.g., torch or numpy).
@@ -123,7 +123,7 @@ def get_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> Re
         scanner,
         radial_trim=10,
         sinogram_order=SinogramSpatialAxisOrder.RVP,
-        max_ring_difference=4
+        max_ring_difference=8
     )
 
     proj = RegularPolygonPETProjector(
@@ -144,6 +144,59 @@ def get_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> Re
             plt.show()
 
     return proj
+
+def get_mCT_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> RegularPolygonPETProjector:
+    """Initializes the mCT PET scanner geometry and projector.
+
+    Args:
+        xp: Array module (e.g., torch or numpy).
+        dev: Compute device (e.g., 'cpu' or 'cuda').
+        show (bool): Whether to visualize the scanner geometry.
+    Returns:
+        proj (RegularPolygonPETProjector): Configured scanner projector."""
+    
+    num_rings = 55 
+    radius_mm = (4 * 13* 48 + 48*3)/(2*torch.pi) # Approximate mCT scanner radius in mm
+    axial_fov_half = 109.0 # Approximate half axial FOV in mm
+
+    scanner = RegularPolygonPETScannerGeometry(
+        xp,
+        dev,
+        radius=radius_mm,
+        num_sides=48,
+        num_lor_endpoints_per_side=13,
+        lor_spacing=4.0,
+        ring_positions=xp.linspace(-axial_fov_half, axial_fov_half, num_rings),
+        symmetry_axis=2,
+    )
+
+    lor_desc = RegularPolygonPETLORDescriptor(
+        scanner,
+        radial_trim=15,
+        sinogram_order=SinogramSpatialAxisOrder.RVP,
+        max_ring_difference=49
+    )
+
+    proj = RegularPolygonPETProjector(
+        lor_descriptor=lor_desc,
+        img_shape=(128, 128, 55),
+        voxel_size=(4.0, 4.0, 4.0)
+    )
+
+    if show:
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        proj.show_geometry(ax=ax)
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            fig.savefig(save_path)
+            plt.close(fig)
+        else:
+            plt.show()
+    return proj
+
+
+
 
 def to_2D(proj: RegularPolygonPETProjector) -> tuple[RegularPolygonPETScannerGeometry, RegularPolygonPETLORDescriptor, RegularPolygonPETProjector]:
     dev = proj._dev

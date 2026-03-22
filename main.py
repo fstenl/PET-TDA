@@ -211,7 +211,7 @@ def linear_motion_test(num_steps: int = 5, num_lors: int = 2000, save_dir: str |
 
     # PET scanner geometry and projection settings
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     grid_shape = projector.in_shape
     phantom_radius = grid_shape[1] // 8  # Set radius to an eighth of the Y dimension for good visibility
     scanner_radius = projector.lor_descriptor.scanner.__getattribute__('radius')
@@ -315,7 +315,7 @@ def deformation_test(num_steps: int = 5, num_lors: int = 2000, num_samples: int 
     method = 'wasserstein'  # Use 'wasserstein' or 'bottleneck'
 
     device = get_device()
-    projector = scanner.get_scanner(xp, device, show=False)
+    projector = scanner.get_mini_scanner(xp, device, show=False)
     grid_shape = projector.in_shape
     phantom_radius = grid_shape[2] // 2 # Set radius to half of the Z dimension for good visibility of deformation
     print(f"Using device: {device} | scanner image shape: {grid_shape} | radius: {projector.lor_descriptor.scanner.__getattribute__('radius')}")
@@ -427,7 +427,7 @@ def intra_variability_deformation_test(num_steps: int = 5, num_lors: int = 2000,
     dist_func = distances.compute_wasserstein_distance if method == 'wasserstein' else distances.compute_bottleneck_distance
 
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     grid_shape = projector.in_shape
     phantom_radius = grid_shape[2] // 2 #  Set radius to half of the Z dimension for good visibility of deformation
     scanner_radius = projector.lor_descriptor.scanner.__getattribute__('radius')
@@ -581,7 +581,7 @@ def sinusoidal_motion_test(num_steps: int = 5, num_lors: int = 2000, num_samples
 
     # PET scanner geometry and projection settings
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     grid_shape = projector.in_shape
     phantom_radius = grid_shape[1] // 8  # Set radius to an eighth of the Y dimension for good visibility
     scanner_radius = projector.lor_descriptor.scanner.__getattribute__('radius')
@@ -703,7 +703,7 @@ def intra_variability_sinusoidal__motion_test(
     )
 
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     grid_shape = projector.in_shape
     phantom_radius = grid_shape[1] // 8
     scanner_radius = projector.lor_descriptor.scanner.__getattribute__("radius")
@@ -869,7 +869,7 @@ def size_test(
     print("=" * 60)
 
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     grid_shape = projector.in_shape
     max_radius = grid_shape[2] // 2  # peak radius at the midpoint of the sequence, scaled to fit in the grid
     base_radius = max(1, round(max_radius / (1 + amplitude)))
@@ -1014,7 +1014,7 @@ def intra_variability_size_test(phantom_fn=None, num_steps: int = 5, num_lors: i
     )
 
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     grid_shape = projector.in_shape
     max_radius = grid_shape[2] // 2  # peak radius at the midpoint of the schedule
     base_radius = max(1, round(max_radius / (1 + amplitude)))
@@ -1191,7 +1191,7 @@ def visualize_2d_phantom(shape_type: str = 'triangle', num_lors: int = 1000, noi
 
     # Set up a 2D projector
     device = get_device()
-    projector = scanner.get_scanner(xp, device)
+    projector = scanner.get_mini_scanner(xp, device)
     _, _, projector = scanner.to_2D(projector)
     grid_shape = projector.in_shape  # (X, Y, 1)
     phantom_radius = grid_shape[1] // 4
@@ -1303,7 +1303,7 @@ def visualize_2d_phantom(shape_type: str = 'triangle', num_lors: int = 1000, noi
 def visualize_sphere_sinogram(save_dir: str | None = None) -> None:
     """Create a sphere phantom and display its full forward-projected sinogram."""
     dev = get_device()
-    proj = scanner.get_scanner(xp, dev)
+    proj = scanner.get_mini_scanner(xp, dev)
 
     # Create a sphere phantom that fits the scanner image grid (40x40x16)
     phantom = primitives.create_sphere_phantom(

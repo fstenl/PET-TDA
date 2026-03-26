@@ -3,100 +3,66 @@ import torch
 import parallelproj
 import matplotlib.pyplot as plt
 from parallelproj import RegularPolygonPETScannerGeometry, RegularPolygonPETLORDescriptor, RegularPolygonPETProjector, SinogramSpatialAxisOrder
-
 import numpy as np
-def generate_lors_from_image(
-    image: torch.Tensor,
-    projector: RegularPolygonPETProjector,
-    num_lors: int,
-    show: bool = False,
-    return_sinogram: bool = False,
-    return_adjoint: bool = False,
-    save_path: str | None = None,
-) -> (
-    tuple[torch.Tensor, torch.Tensor]
-    | tuple[torch.Tensor, torch.Tensor, np.ndarray]
-    | tuple[torch.Tensor, torch.Tensor, np.ndarray, np.ndarray]
-):
-    """Generates LOR endpoints by sampling from a projected activity image.
 
-    Args:
-        image (torch.Tensor): 3D tensor representing the activity distribution.
-        projector (RegularPolygonPETProjector): Scanner projector for forward projection.
-        num_lors (int): Number of LORs to sample.
-        show (bool, optional): Whether to visualize the sinogram and sampled LORs.
-            Not thread-safe — use ``return_sinogram=True`` and plot on the main
-            thread when running in parallel. Defaults to False.
-        return_sinogram (bool, optional): If True, return the sampled sinogram
-            image (numpy array) as an additional element so calling code can
-            plot it later on the main thread. Defaults to False.
-        return_adjoint (bool, optional): If True, return the adjoint
-            (back-projected) image of the sampled sinogram as a numpy array.
-            Useful for visualising which voxels are covered by the sampled
-            LORs. Defaults to False.
 
-    Returns:
-        (p1, p2) when both ``return_sinogram`` and ``return_adjoint`` are False.
-        (p1, p2, sinogram_image) when only ``return_sinogram`` is True.
-        (p1, p2, sinogram_image, adjoint_image) when both are True.
-        (p1, p2, adjoint_image) when only ``return_adjoint`` is True.
-    """
+def sample_events(image, proj, n_events):
+    """Samples list-mode event indices from a phantom image."""
+    sinogram = proj(image)
+    weights = torch.clamp(sinogram.flatten(), min=0)
 
-    # Forward project image to create sinogram
-    forward = projector(image)
-    sino_poisson = torch.poisson(forward)
+    if weights.sum() <= 0:
+        raise ValueError("Sinogram is empty. Check phantom position.")
 
-    # Create sampling weights from the sinogram
-    sampling_weights = torch.clamp(sino_poisson.flatten(), min=0)
-    if sampling_weights.sum() <= 0:
-        raise ValueError("Sinogram is empty. Ensure phantom is within scanner FOV.")
+    return torch.multinomial(weights / weights.sum(), n_events, replacement=True)
 
-    # Sample LOR indices
-    sampling_weights /= sampling_weights.sum()
-    lor_indices = torch.multinomial(sampling_weights, num_lors, replacement=True)
+def sample_events_2(image, proj, n_events):
+    sinogram = proj(image)
+    weights = torch.clamp(sinogram.flatten(), min=0)
+    
+    total_weight = weights.sum()
+    if total_weight <= 0:
+        raise ValueError("Sinogram is empty. Check phantom position.")
 
-    # For visualization: create a binary image of sampled LORs in the sinogram space
-    sampled_sinogram = torch.zeros_like(sino_poisson.flatten())
-    lor_indices_unique, counts = torch.unique(lor_indices, return_counts=True)
-    sampled_sinogram[lor_indices_unique] = counts.float()
-    sampled_sinogram = sampled_sinogram.reshape(projector.out_shape)
+    # 1. Compute the Cumulative Distribution Function (CDF)
+    cdf = torch.cumsum(weights, dim=0)
+    
+    # 2. Generate random thresholds between 0 and the total sum
+    # Note: Using double precision (float64) for 'r' is safer for very large arrays 
+    # to avoid precision issues at the tail end of the CDF.
+    r = torch.rand(n_events, device=weights.device, dtype=torch.float64) * total_weight
+    
+    # 3. Use searchsorted to find which bin each random number falls into
+    # This replaces torch.multinomial
+    indices = torch.searchsorted(cdf, r)
+    
+    return indices
 
-    # Pick the plane with the most counts so the visualisation always shows
-    plane_sums = sampled_sinogram.sum(dim=(0, 1))
-    slice_idx = int(plane_sums.argmax())
-    sinogram_img = parallelproj.to_numpy_array(sampled_sinogram[:, :, slice_idx].T)
+def get_event_coords(indices, proj):
+    """Maps indices to 3D coordinates using TOF midpoints or LOR endpoints[cite: 484, 485]."""
+    
+    lor_desc = proj.lor_descriptor
+    p1, p2 = lor_desc.get_lor_coordinates()
+    p1, p2 = p1.reshape(-1, 3), p2.reshape(-1, 3)
 
-    # Compute the adjoint (back-projection) of the sampled sinogram
-    adjoint_img = None
-    if return_adjoint:
-        adjoint_vol = projector.adjoint(sampled_sinogram)
-        mid_slice = adjoint_vol.shape[2] // 2
-        adjoint_img = parallelproj.to_numpy_array(adjoint_vol[:, :, mid_slice].T)
+    if proj.tof_parameters is not None:
+        n_tof = proj.tof_parameters.num_tofbins
+        w_tof = proj.tof_parameters.tofbin_width
 
-    if show:
-        fig, ax = plt.subplots()
-        ax.imshow(sinogram_img, cmap="Greys_r", vmin=0)
-        ax.set_title("Sampled LORs")
-        fig.tight_layout()
-        if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            fig.savefig(save_path)
-            plt.close(fig)
-        else:
-            plt.show()
+        lor_idx = torch.div(indices, n_tof, rounding_mode='floor')
+        print("indices shape:", indices.shape)
+        print("indices min/max:", indices.min(), indices.max())
+        tof_idx = indices % n_tof
+        print(f"tof_idx: {tof_idx.min()} to {tof_idx.max()} (should be between 0 and {n_tof-1})")
 
-    # Map indices to 3D endpoint coordinates
-    p1_all, p2_all = projector.lor_descriptor.get_lor_coordinates()
-    p1_flat = p1_all.reshape(-1, 3)
-    p2_flat = p2_all.reshape(-1, 3)
+        x1, x2 = p1[lor_idx], p2[lor_idx]
+        dist = (tof_idx.float() - (n_tof - 1) / 2.0) * w_tof
 
-    result = (p1_flat[lor_indices], p2_flat[lor_indices])
-    if return_sinogram:
-        result = result + (sinogram_img,)
-    if return_adjoint:
-        result = result + (adjoint_img,)
+        vec = x2 - x1
+        unit = vec / torch.linalg.norm(vec, dim=1, keepdim=True)
+        return (x1 + x2) / 2.0 + unit * dist.unsqueeze(1)
 
-    return result
+    return p1[indices], p2[indices]
 
 def get_mini_scanner(xp, dev, show: bool = False, save_path: str | None = None) -> RegularPolygonPETProjector:
     """Initializes the PET scanner geometry and projector.
@@ -172,15 +138,15 @@ def get_mCT_scanner(xp, dev, show: bool = False, save_path: str | None = None) -
 
     lor_desc = RegularPolygonPETLORDescriptor(
         scanner,
-        radial_trim=15,
+        radial_trim=125,
         sinogram_order=SinogramSpatialAxisOrder.RVP,
         max_ring_difference=49
     )
 
     proj = RegularPolygonPETProjector(
         lor_descriptor=lor_desc,
-        img_shape=(55, 128, 128),
-        voxel_size=(4.0, 4.0, 4.0)
+        img_shape=(109, 128, 128),
+        voxel_size=(2.0, 4.0, 4.0)
     )
 
     if show:
@@ -193,6 +159,8 @@ def get_mCT_scanner(xp, dev, show: bool = False, save_path: str | None = None) -
             plt.close(fig)
         else:
             plt.show()
+    
+    proj.tof_parameters = parallelproj.TOFParameters(num_tofbins=13, tofbin_width=46.8, sigma_tof= 33.58)
     return proj
 
 

@@ -135,20 +135,24 @@ def visualise_sinogram(x_fwd, show: bool = True):
     if show:
         plt.show()
 
-    
+
 if __name__ == "__main__":
     dev = get_device()
     print(f"Using device: {dev}")
 
-    proj = get_mCT_scanner(xp, dev, show=False)
+    proj = get_mCT_scanner(xp, dev, show=True)
    
     xcat = np.load("data/respiratory_only.npy")
     print(f"Image shape: {xcat.shape}")
-    visualize_image(xcat, show = False)
-    image_to_project = xp.asarray(xcat[0,30:85,:,:])  # Take the first frame for projection
+    visualize_image(xcat, show = True)
+    image_to_project = xp.asarray(xcat[0,330:385,:,:])  # Take the first frame for projection
 
-    forward_proj = proj(image_to_project)
-    visualise_sinogram(forward_proj, show= True)
+    out_shape = proj.out_shape
+
+    print(f"Out Shape: {out_shape}")
+
+    #forward_proj = proj(image_to_project)
+    #visualise_sinogram(forward_proj, show= True)
 
 
 

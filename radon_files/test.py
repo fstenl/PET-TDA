@@ -2,7 +2,7 @@
 # %%
 %matplotlib widget
 
-from scanner import *
+from radon_files.scanner import *
 import array_api_compat.torch as xp
 import torch
 import numpy as np
@@ -11,6 +11,7 @@ from matplotlib.widgets import Slider
 import parallelproj
 from IPython.display import display
 import ipywidgets as widgets
+from typing import Optional
 
 
 def get_device():
@@ -249,6 +250,37 @@ def plot_3d(points, num_display=5000):
     plt.show()
 
 
+def histogram_events(event_indices: torch.Tensor, proj: parallelproj.RegularPolygonPETProjector) -> torch.Tensor:
+    """Convert list-mode indices to a TOF sinogram histogram."""
+    num_bins = int(np.prod(proj.out_shape))
+    counts = torch.bincount(event_indices, minlength=num_bins).to(torch.float32)
+    return counts.reshape(proj.out_shape)
+
+
+def run_mlem(
+    proj: parallelproj.RegularPolygonPETProjector,
+    measured_sino: torch.Tensor,
+    num_iter: int = 3,
+    contamination: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Run a few iterations of basic TOF-MLEM reconstruction."""
+    device = measured_sino.device
+    if contamination is None:
+        contamination = torch.zeros_like(measured_sino, dtype=torch.float32, device=device)
+
+    x = torch.ones(proj.in_shape, dtype=torch.float32, device=device)
+    adjoint_ones = proj.adjoint(torch.ones(proj.out_shape, dtype=torch.float32, device=device))
+    eps = torch.finfo(torch.float32).eps
+
+    for it in range(num_iter):
+        expected = proj(x) + contamination
+        ratio = measured_sino / torch.clamp(expected, min=eps)
+        correction = proj.adjoint(ratio)
+        x = x * correction / torch.clamp(adjoint_ones, min=eps)
+        print(f"MLEM iteration {it + 1}/{num_iter}")
+
+    return x
+
 
 # %%
 dev = "cpu"
@@ -275,6 +307,14 @@ dists = get_event_coords(events, proj)
 # %%
 plot_3d(dists,10000)
 print("Event coordinates shape:", dists.shape)
+
+measured_sino = histogram_events(events, proj)
+print("Measured sinogram stats:", measured_sino.shape, measured_sino.sum().item())
+
+reconstruction = run_mlem(proj, measured_sino, num_iter=3)
+recon_np = parallelproj.to_numpy_array(reconstruction.unsqueeze(0))
+visualize_image(recon_np)
+print("MLEM reconstruction min/max:", reconstruction.min().item(), reconstruction.max().item())
 
 
 # %%

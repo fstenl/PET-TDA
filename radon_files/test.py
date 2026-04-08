@@ -1,4 +1,3 @@
-
 # %%
 %matplotlib widget
 
@@ -252,13 +251,17 @@ def plot_3d(points, num_display=5000):
 
 def histogram_events(event_indices: torch.Tensor, proj: parallelproj.RegularPolygonPETProjector) -> torch.Tensor:
     """Convert list-mode indices to a TOF sinogram histogram."""
+    # Ensure event_indices is a 1D tensor of integers to prevent silent bincount failures
+    if event_indices.ndim != 1 or event_indices.is_floating_point():
+         raise ValueError("event_indices must be a 1D tensor of integers (e.g., torch.int64).")
+         
     num_bins = int(np.prod(proj.out_shape))
-    counts = torch.bincount(event_indices, minlength=num_bins).to(torch.float32)
+    counts = torch.bincount(event_indices, minlength=num_bins).to(dtype=torch.float32)
     return counts.reshape(proj.out_shape)
 
 
 def run_mlem(
-    proj: parallelproj.RegularPolygonPETProjector,
+    op: parallelproj.LinearOperator,
     measured_sino: torch.Tensor,
     num_iter: int = 3,
     contamination: Optional[torch.Tensor] = None,
@@ -268,14 +271,15 @@ def run_mlem(
     if contamination is None:
         contamination = torch.zeros_like(measured_sino, dtype=torch.float32, device=device)
 
-    x = torch.ones(proj.in_shape, dtype=torch.float32, device=device)
-    adjoint_ones = proj.adjoint(torch.ones(proj.out_shape, dtype=torch.float32, device=device))
+    x = torch.ones(op.in_shape, dtype=torch.float32, device=device)
+    # Adjoint is now calculated dynamically from the operator (which can include attenuation/resolution)
+    adjoint_ones = op.adjoint(torch.ones(op.out_shape, dtype=torch.float32, device=device))
     eps = torch.finfo(torch.float32).eps
 
     for it in range(num_iter):
-        expected = proj(x) + contamination
-        ratio = measured_sino / torch.clamp(expected, min=eps)
-        correction = proj.adjoint(ratio)
+        ybar = op(x) + contamination
+        ratio = measured_sino / torch.clamp(ybar, min=eps)
+        correction = op.adjoint(ratio)
         x = x * correction / torch.clamp(adjoint_ones, min=eps)
         print(f"MLEM iteration {it + 1}/{num_iter}")
 
@@ -315,6 +319,5 @@ reconstruction = run_mlem(proj, measured_sino, num_iter=3)
 recon_np = parallelproj.to_numpy_array(reconstruction.unsqueeze(0))
 visualize_image(recon_np)
 print("MLEM reconstruction min/max:", reconstruction.min().item(), reconstruction.max().item())
-
 
 # %%

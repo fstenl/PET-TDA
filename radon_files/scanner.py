@@ -17,30 +17,24 @@ def sample_events(image, proj, n_events):
     return torch.multinomial(weights / weights.sum(), n_events, replacement=True)
 
 def sample_events_2(image, proj, n_events):
+    """Samples list-mode event indices from a phantom image using the CDF method."""
     sinogram = proj(image)
     weights = torch.clamp(sinogram.flatten(), min=0)
-    
-    total_weight = weights.sum()
-    if total_weight <= 0:
+
+    cdf = torch.cumsum(weights, dim=0)
+
+    if cdf[-1] <= 0:
         raise ValueError("Sinogram is empty. Check phantom position.")
 
-    # 1. Compute the Cumulative Distribution Function (CDF)
-    cdf = torch.cumsum(weights, dim=0)
-    
-    # 2. Generate random thresholds between 0 and the total sum
-    # Note: Using double precision (float64) for 'r' is safer for very large arrays 
-    # to avoid precision issues at the tail end of the CDF.
-    r = torch.rand(n_events, device=weights.device, dtype=torch.float64) * total_weight
-    
-    # 3. Use searchsorted to find which bin each random number falls into
-    # This replaces torch.multinomial
-    indices = torch.searchsorted(cdf, r)
-    
-    return indices
+    r = torch.rand(n_events, device=weights.device, dtype=weights.dtype) * cdf[-1]
+
+    return torch.searchsorted(cdf, r)
 
 def get_event_coords(indices, proj):
-    """Maps indices to 3D coordinates using TOF midpoints or LOR endpoints[cite: 484, 485]."""
-    
+    """Maps indices to 3D coordinates using TOF midpoints or LOR endpoints."""
+    if not isinstance(indices, torch.Tensor):
+        indices = torch.as_tensor(indices)
+
     lor_desc = proj.lor_descriptor
     p1, p2 = lor_desc.get_lor_coordinates()
     p1, p2 = p1.reshape(-1, 3), p2.reshape(-1, 3)
@@ -50,10 +44,7 @@ def get_event_coords(indices, proj):
         w_tof = proj.tof_parameters.tofbin_width
 
         lor_idx = torch.div(indices, n_tof, rounding_mode='floor')
-        print("indices shape:", indices.shape)
-        print("indices min/max:", indices.min(), indices.max())
         tof_idx = indices % n_tof
-        print(f"tof_idx: {tof_idx.min()} to {tof_idx.max()} (should be between 0 and {n_tof-1})")
 
         x1, x2 = p1[lor_idx], p2[lor_idx]
         dist = (tof_idx.float() - (n_tof - 1) / 2.0) * w_tof

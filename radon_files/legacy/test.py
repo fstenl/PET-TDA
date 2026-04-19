@@ -1,23 +1,27 @@
 # %%
 %matplotlib widget
 
-import array_api_compat.torch as xp
+import array_api_compat.cupy as xp
+import cupy
 import numpy as np
 import matplotlib.pyplot as plt
 import parallelproj
 
-from radon_files.scanner import get_mCT_scanner, sample_events_2, get_event_coords
-from radon_files.visualization import (
+from scanner import get_mCT_scanner, sample_events_from_sinogram, get_event_coords
+from visualization import (
     visualize_image,
     visualize_image_jupyter,
     visualize_sinogram_tof,
     plot_3d,
 )
-from radon_files.reconstruction import histogram_events, run_mlem
-from radon_files.persistence import witness_persistence, diagrams_to_betti_curves, euler_characteristic_curve
+from persistence import (
+    compute_persistence,
+    diagrams_to_betti_curves,
+    euler_characteristic_curve,
+)
 
 # %%
-dev = "cpu"
+dev = cupy.cuda.Device(0)
 print(f"Using device: {dev}")
 
 proj = get_mCT_scanner(xp, dev)
@@ -35,19 +39,23 @@ print("Number of tof bins:", proj.tof_parameters)
 forward_proj = proj(image_to_project)
 visualize_sinogram_tof(forward_proj, show=True)
 
-events = sample_events_2(image_to_project, proj, 35000)
+events = sample_events_from_sinogram(forward_proj, 500)
 
 dists = get_event_coords(events, proj)
 
-plot_3d(dists, 10000)
+plot_3d(dists, 500)
 print("Event coordinates shape:", dists.shape)
 
-# %% Persistent homology via witness complex
-diagrams = witness_persistence(
+# %% Persistent homology — pluggable pipeline (subsample → backend → vectorise)
+diagrams = compute_persistence(
     dists,
-    landmark_ratio=0.10,   # 10% of points as landmarks
-    landmark_method="maxmin",  # farthest-point sampling for even spatial coverage
-    max_dim=1,             # H0 (connected components) + H1 (loops)
+    # subsample="voxel", subsample_kwargs={"voxel_size": 3.0},   # try me
+    method="witness",
+    method_kwargs={
+        "landmark_ratio": 0.10,
+        "landmark_method": "farthest",
+        "max_dim": 1,
+    },
 )
 
 # Betti curves — β_k(t) counts features alive at filtration value t (mm)
@@ -69,13 +77,3 @@ axes[2].set_ylabel("χ")
 fig.tight_layout()
 plt.show()
 
-# %%
-measured_sino = histogram_events(events, proj)
-print("Measured sinogram stats:", measured_sino.shape, measured_sino.sum().item())
-
-reconstruction = run_mlem(proj, measured_sino, num_iter=3)
-recon_np = parallelproj.to_numpy_array(reconstruction.unsqueeze(0))
-visualize_image(recon_np)
-print("MLEM reconstruction min/max:", reconstruction.min().item(), reconstruction.max().item())
-
-# %%

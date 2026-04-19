@@ -212,6 +212,40 @@ def visualize_sinogram_tof(sino_data, title='TOF Sinogram', show=False):
         plt.show()
 
 
+def plot_distance_matrix(
+    D,
+    labels=None,
+    *,
+    title="Inter-window distance matrix",
+    cbar_label="distance",
+    cmap="viridis",
+    show=True,
+):
+    """Plot a symmetric distance matrix with a colorbar.
+
+    Uses ``constrained_layout`` so the colorbar isn't clipped by the axes.
+    """
+    D = np.asarray(D)
+    n = D.shape[0]
+    if labels is None:
+        labels = list(range(n))
+
+    fig, ax = plt.subplots(figsize=(8, 7), constrained_layout=True)
+    im = ax.imshow(D, cmap=cmap)
+    ax.set_title(title)
+    ax.set_xlabel("Window")
+    ax.set_ylabel("Window")
+    ax.set_xticks(range(n))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels([str(l) for l in labels], fontsize=8)
+    ax.set_yticklabels([str(l) for l in labels], fontsize=8)
+    fig.colorbar(im, ax=ax, label=cbar_label)
+
+    if show:
+        plt.show()
+    return fig, ax
+
+
 def plot_3d(points, num_display=5000):
     """3D scatter plot of event point cloud."""
     pts = points.cpu().numpy()

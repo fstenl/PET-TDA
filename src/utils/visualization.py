@@ -1,14 +1,31 @@
+"""Visualization utilities for PET phantom, sinogram, reconstruction, and TDA data."""
+
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_phantom_frame(phantom, frame=0):
+def save_or_show(fig, path=None):
+    """Save figure to file or show interactively.
+
+    Args:
+        fig (matplotlib.figure.Figure): Figure to save or show.
+        path (str | None): File path to save to. If None, shows interactively.
+    """
+    if path is not None:
+        fig.savefig(path, bbox_inches='tight')
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_phantom_frame(phantom, frame=0, path=None):
     """Plot z, y, and x center slices of a phantom frame.
 
     Args:
         phantom (torch.Tensor): Phase series of shape (num_frames, Nz, Ny, Nx).
         frame (int): Frame index to visualize.
+        path (str | None): File path to save to. If None, shows interactively.
     """
     vol = phantom[frame].cpu()
     nz, ny, nx = vol.shape
@@ -29,10 +46,10 @@ def plot_phantom_frame(phantom, frame=0):
         ax.axis('off')
 
     plt.tight_layout()
-    plt.show()
+    save_or_show(fig, path)
 
 
-def plot_sinogram(sinogram, max_planes=10, max_tofbins=9):
+def plot_sinogram(sinogram, max_planes=10, max_tofbins=9, path=None):
     """Plot sinogram as a grid of planes, with TOF bins as columns if present.
 
     For non-TOF sinograms, each subplot shows one plane. For TOF sinograms,
@@ -43,6 +60,7 @@ def plot_sinogram(sinogram, max_planes=10, max_tofbins=9):
             or (num_rad, num_angles, num_planes, num_tofbins).
         max_planes (int): Maximum number of planes to show.
         max_tofbins (int): Maximum number of TOF bins to show (TOF only).
+        path (str | None): File path to save to. If None, shows interactively.
     """
     sino = sinogram.cpu().float()
     tof = sino.ndim == 4
@@ -102,15 +120,16 @@ def plot_sinogram(sinogram, max_planes=10, max_tofbins=9):
 
     fig.suptitle("Sinogram" + (" (TOF)" if tof else ""))
     plt.tight_layout()
-    plt.show()
+    save_or_show(fig, path)
 
 
-def plot_pointcloud(points, max_points=50_000):
+def plot_pointcloud(points, max_points=50_000, path=None):
     """Plot a 3D scatter of TOF bin center coordinates.
 
     Args:
         points (torch.Tensor): TOF bin center coordinates of shape (N, 3).
         max_points (int): Maximum number of points to plot for performance.
+        path (str | None): File path to save to. If None, shows interactively.
     """
     pts = points.cpu()
 
@@ -127,14 +146,15 @@ def plot_pointcloud(points, max_points=50_000):
     ax.set_zlabel("z")
 
     plt.tight_layout()
-    plt.show()
+    save_or_show(fig, path)
 
 
-def plot_reconstruction(image):
+def plot_reconstruction(image, path=None):
     """Plot z, y, and x center slices of a reconstructed image.
 
     Args:
         image (torch.Tensor): Reconstructed image of shape (Nz, Ny, Nx).
+        path (str | None): File path to save to. If None, shows interactively.
     """
     vol = image.cpu()
     nz, ny, nx = vol.shape
@@ -155,15 +175,16 @@ def plot_reconstruction(image):
         ax.axis('off')
 
     plt.tight_layout()
-    plt.show()
+    save_or_show(fig, path)
 
 
-def plot_persistence_diagram(diagrams, title="Persistence diagram"):
+def plot_persistence_diagram(diagrams, title="Persistence diagram", path=None):
     """Plot persistence diagrams for all homology dimensions.
 
     Args:
         diagrams (list[np.ndarray]): Persistence diagrams, one per dimension.
         title (str): Plot title.
+        path (str | None): File path to save to. If None, shows interactively.
     """
     fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -183,15 +204,16 @@ def plot_persistence_diagram(diagrams, title="Persistence diagram"):
     ax.legend()
 
     plt.tight_layout()
-    plt.show()
+    save_or_show(fig, path)
 
 
-def plot_distance_matrix(dist_matrix, title="Distance matrix"):
+def plot_distance_matrix(dist_matrix, title="Distance matrix", path=None):
     """Plot a pairwise distance matrix as a heatmap.
 
     Args:
         dist_matrix (np.ndarray): Symmetric distance matrix of shape (N, N).
         title (str): Plot title.
+        path (str | None): File path to save to. If None, shows interactively.
     """
     fig, ax = plt.subplots(figsize=(7, 6))
     im = ax.imshow(dist_matrix, cmap='viridis')
@@ -201,4 +223,4 @@ def plot_distance_matrix(dist_matrix, title="Distance matrix"):
     ax.set_ylabel("Frame")
 
     plt.tight_layout()
-    plt.show()
+    save_or_show(fig, path)

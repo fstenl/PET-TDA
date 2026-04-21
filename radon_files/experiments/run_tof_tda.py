@@ -1,4 +1,4 @@
-"""TDA directly on TOF event point clouds (no reconstruction).
+"""TDA directly on TOF event point clouds.
 
 Phantom -> forward-project -> sample TOF events -> localise to TOF-bin
 centres -> point cloud -> witness/Vietoris-Rips persistence ->
@@ -11,53 +11,37 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
 
 from src.utils.device import get_device
-from src.phantom.generator import generate_moving_sphere, load_xcat
-from src.simulation.scanner import get_mini_projector, get_mct_projector
+from src.phantom.generator import load_xcat
+from src.simulation.scanner import get_mct_projector
 from src.simulation.listmode import (
     sample_events_from_sinogram,
     get_lor_endpoints,
 )
 from src.representation.pointcloud import localize_events
-from src.tda.persistence import compute_persistence, compute_frame_pcfs
-from src.tda.vectorization import (
-    diagrams_to_betti_curves,
-    euler_characteristic_curve,
-)
+from src.tda.persistence import compute_frame_pcfs
 from src.tda.distances import compute_pcf_distance_matrix
 from src.utils.visualization import (
     plot_phantom_frame,
-    plot_pointcloud_3d,
-    plot_persistence_diagram,
-    plot_betti_curves,
-    plot_euler_characteristic,
     plot_distance_matrix,
 )
 
 # --- Config ---
 device = get_device()
-num_frames = 10
-num_events_per_frame = 25000
+num_frames = 20
+num_events_per_frame = 35000
 gating_method = 'masspcf'     # 'masspcf' (batched), 'witness', or 'ripser'
-xcat_path = '../data/respiratory_only.npy'
+xcat_path = '../../../data/respiratory_only.npy'
 
 # --- Phantom ---
-if os.path.exists(xcat_path):
-    print(f"Loading XCAT phantom from {xcat_path}")
-    full = load_xcat(xcat_path, device=device)
-    phantom = full[:num_frames, 300:300 + 109, :, :]
-    proj = get_mct_projector(device=device, img_shape=tuple(phantom.shape[1:]), tof=True)
-else:
-    print(f"XCAT phantom not found at {xcat_path}; using synthetic moving sphere")
-    img_shape = (20, 80, 80)
-    phantom = generate_moving_sphere(
-        num_phases=num_frames,
-        num_cycles=1,
-        img_shape=img_shape,
-        device=device,
-    )
-    proj = get_mini_projector(device=device, img_shape=img_shape, tof=True)
+
+print(f"Loading XCAT phantom from {xcat_path}")
+full = load_xcat(xcat_path, device=device)
+phantom = full[:num_frames, 300:300 + 109, :, :]
+proj = get_mct_projector(device=device, img_shape=tuple(phantom.shape[1:]), tof=True)
+
 
 print(f"Phantom shape: {phantom.shape}")
 plot_phantom_frame(phantom, frame=0)
@@ -75,31 +59,6 @@ for f in range(num_frames):
     point_clouds.append(points)
     print(f"  frame {f + 1}/{num_frames}: {points.shape[0]} events")
 
-# --- Inspect the first frame ---
-plot_pointcloud_3d(point_clouds[0])
-
-# --- Single-frame persistence via witness complex ---
-print("Computing witness-complex persistence on frame 0 ...")
-diagrams = compute_persistence(
-    point_clouds[0],
-    subsample='voxel',
-    subsample_kwargs={'voxel_size': 5.0},
-    method='witness',
-    method_kwargs={
-        'landmark_ratio': 0.10,
-        'landmark_method': 'farthest',
-        'max_dim': 1,
-    },
-)
-
-# --- Vectorise and plot ---
-betti_curves = diagrams_to_betti_curves(diagrams)
-t_ecc, chi = euler_characteristic_curve(diagrams)
-
-plot_persistence_diagram(diagrams, title="Persistence diagram - frame 0 (TOF)")
-plot_betti_curves(betti_curves, title="Betti curves - frame 0 (TOF)")
-plot_euler_characteristic(t_ecc, chi, title="Euler characteristic - frame 0 (TOF)")
-
 # --- Inter-frame Betti-curve distance matrix ---
 print(f"Computing per-frame Betti curve PCFs (method={gating_method!r}) ...")
 pcf_tensors = compute_frame_pcfs(
@@ -108,8 +67,18 @@ pcf_tensors = compute_frame_pcfs(
     method=gating_method,
     max_dim=1,
     subsample='voxel',
-    subsample_kwargs={'voxel_size': 5.0},
+    subsample_kwargs={'voxel_size': 10.0},
 )
+
+"""pcf_tensors = compute_frame_pcfs(
+    event_frames,
+    proj,
+    method=gating_method,
+    max_dim=1,
+    method_kwargs={},
+    subsample="farthest",              # Switch away from voxel
+    subsample_kwargs={"n": 2500},      # Keep an exact, stable number of landmarks
+)"""
 
 print("Computing inter-frame L2 distance matrix ...")
 dist_matrix = compute_pcf_distance_matrix(pcf_tensors)
@@ -122,4 +91,26 @@ plot_distance_matrix(
     labels=list(range(num_frames)),
     cbar_label="L2 distance",
 )
+print("Saving plot image to distance_matrix_10mm.png...")
+plt.savefig("distance_matrix_10mm.png", dpi=300, bbox_inches="tight")
+
+# --- Cyclic correlation ---
+n = dist_matrix.shape[0]
+phase_dist = np.array([
+    [min(abs(i - j), n - abs(i - j)) for j in range(n)]
+    for i in range(n)
+], dtype=float)
+
+upper = np.triu_indices(n, k=1)
+rho, pval = spearmanr(dist_matrix[upper], phase_dist[upper])
+print(f"Cyclic Spearman ρ = {rho:.4f}  (p = {pval:.2e})")
+
+fig, ax = plt.subplots(figsize=(5, 5))
+ax.scatter(phase_dist[upper], dist_matrix[upper], s=6, alpha=0.6)
+ax.set_xlabel("Ground-truth phase distance (frames)")
+ax.set_ylabel("Betti-curve L2 distance")
+ax.set_title(f"Cyclic correlation  ρ = {rho:.3f}")
+plt.tight_layout()
+plt.savefig("cyclic_correlation.png", dpi=300, bbox_inches="tight")
+
 print("Done!")

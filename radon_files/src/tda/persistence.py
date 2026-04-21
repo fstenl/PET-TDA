@@ -63,6 +63,118 @@ def compute_persistence_volume(volume, max_dim=2):
     return diagrams
 
 
+def compute_persistence_plucker(p1, p2, alpha=1.0, beta=1.0, max_dim=1, n_samples=None):
+    """Compute persistence diagrams from LOR endpoints via Plücker distance matrix.
+
+    Converts endpoints to canonical Plücker coordinates, builds the hybrid
+    angular+geometric distance matrix, then runs Vietoris-Rips persistence via
+    ripser using that precomputed matrix.
+
+    Args:
+        p1 (torch.Tensor): Start detector coordinates of shape (N, 3).
+        p2 (torch.Tensor): End detector coordinates of shape (N, 3).
+        alpha (float): Angular distance weight.
+        beta (float): Geometric distance weight (use 1/scanner_radius).
+        max_dim (int): Maximum homology dimension to compute.
+        n_samples (int | None): If given, randomly subsample to this many LORs
+            before building the distance matrix. Required when N is large
+            (N=25 000 → ~5 GB matrix; n_samples=2000 → ~32 MB).
+
+    Returns:
+        list[np.ndarray]: Persistence diagrams, one (n_k, 2) array per dimension.
+    """
+    from src.representation.plucker import plucker_distance_matrix
+
+    if n_samples is not None and p1.shape[0] > n_samples:
+        idx = torch.randperm(p1.shape[0], device=p1.device)[:n_samples]
+        p1, p2 = p1[idx], p2[idx]
+
+    dist = plucker_distance_matrix(p1, p2, alpha=alpha, beta=beta)
+    dist_np = dist.detach().cpu().numpy().astype(np.float64)
+    result = ripser(dist_np, distance_matrix=True, maxdim=max_dim)
+    return result['dgms']
+
+
+def compute_frame_diagrams_plucker(
+    event_frames, proj, alpha=1.0, beta=1.0, max_dim=1, n_samples=None, n_workers=None
+):
+    """Compute Plücker persistence diagrams for every event frame.
+
+    Vectorises in two ways:
+    1. All frames' Plücker distance matrices are built in a single batched
+       torch.bmm call (one GPU kernel per operation instead of F serial calls).
+    2. The per-frame ripser calls are dispatched to a ThreadPoolExecutor; ripser
+       releases the GIL so threads run in true parallel on CPU.
+
+    Args:
+        event_frames (list[torch.Tensor]): Per-frame flat LOR indices.
+        proj (RegularPolygonPETProjector): Configured parallelproj projector.
+        alpha (float): Angular distance weight.
+        beta (float): Geometric distance weight (use 1/scanner_radius).
+        max_dim (int): Maximum homology dimension to compute.
+        n_samples (int | None): LORs to keep per frame before TDA. Strongly
+            recommended (e.g. 2000) — N=25 000 produces a ~5 GB distance matrix.
+        n_workers (int | None): Thread-pool size for parallel ripser. Defaults
+            to number of frames (one thread per frame).
+
+    Returns:
+        list[list[np.ndarray]]: One diagram list per frame.
+    """
+    import os
+    import concurrent.futures
+    from src.simulation.listmode import get_lor_endpoints
+    from src.representation.plucker import (
+        to_canonical_plucker_batched,
+        compute_hybrid_weighted_distance_batched,
+    )
+
+    n_frames = len(event_frames)
+    if n_workers is None:
+        n_workers = min(os.cpu_count() or 1, n_frames)
+
+    # --- Step 1: collect & optionally subsample endpoints ---
+    print("[plucker] collecting LOR endpoints ...")
+    p1_list, p2_list = [], []
+    for f_idx, frame in enumerate(event_frames):
+        p1, p2, _ = get_lor_endpoints(frame, proj)
+        if n_samples is not None and p1.shape[0] > n_samples:
+            idx = torch.randperm(p1.shape[0], device=p1.device)[:n_samples]
+            p1, p2 = p1[idx], p2[idx]
+        p1_list.append(p1)
+        p2_list.append(p2)
+
+    # --- Step 2: batched Plücker distance matrices (single bmm pass) ---
+    print("[plucker] computing batched distance matrices ...")
+    p1_batch = torch.stack(p1_list)   # (F, N, 3)
+    p2_batch = torch.stack(p2_list)   # (F, N, 3)
+    coords_batch = to_canonical_plucker_batched(p1_batch, p2_batch)
+    dist_batch = compute_hybrid_weighted_distance_batched(coords_batch, alpha=alpha, beta=beta)
+    dist_np_list = [
+        dist_batch[f].detach().cpu().numpy().astype(np.float64) for f in range(n_frames)
+    ]
+    del dist_batch, coords_batch, p1_batch, p2_batch  # free memory before ripser
+
+    # --- Step 3: parallel ripser across frames ---
+    print(f"[plucker] running ripser on {n_frames} frames ({n_workers} workers) ...")
+
+    def _ripser(args):
+        f_idx, dist_np = args
+        result = ripser(dist_np, distance_matrix=True, maxdim=max_dim)
+        print(f"[plucker] frame {f_idx + 1}/{n_frames} done")
+        return f_idx, result['dgms']
+
+    all_diagrams = [None] * n_frames
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
+        futures = {
+            pool.submit(_ripser, (f, d)): f for f, d in enumerate(dist_np_list)
+        }
+        for future in concurrent.futures.as_completed(futures):
+            f_idx, dgms = future.result()
+            all_diagrams[f_idx] = dgms
+
+    return all_diagrams
+
+
 def compute_persistence(points, subsample=None, subsample_kwargs=None,
                         method='witness', method_kwargs=None):
     """Run the point-cloud persistence pipeline: subsample, then backend.

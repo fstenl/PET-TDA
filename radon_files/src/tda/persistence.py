@@ -132,7 +132,7 @@ def compute_frame_diagrams_plucker(
     if n_workers is None:
         n_workers = min(os.cpu_count() or 1, n_frames)
 
-    # --- Step 1: collect & optionally subsample endpoints ---
+    # --- collect & optionally subsample endpoints ---
     print("[plucker] collecting LOR endpoints ...")
     p1_list, p2_list = [], []
     for f_idx, frame in enumerate(event_frames):
@@ -143,7 +143,7 @@ def compute_frame_diagrams_plucker(
         p1_list.append(p1)
         p2_list.append(p2)
 
-    # --- Step 2: batched Plücker distance matrices (single bmm pass) ---
+    # --- batched Plücker distance matrices (single bmm pass) ---
     print("[plucker] computing batched distance matrices ...")
     p1_batch = torch.stack(p1_list)   # (F, N, 3)
     p2_batch = torch.stack(p2_list)   # (F, N, 3)
@@ -154,7 +154,7 @@ def compute_frame_diagrams_plucker(
     ]
     del dist_batch, coords_batch, p1_batch, p2_batch  # free memory before ripser
 
-    # --- Step 3: parallel ripser across frames ---
+    # --- parallel ripser across frames ---
     print(f"[plucker] running ripser on {n_frames} frames ({n_workers} workers) ...")
 
     def _ripser(args):

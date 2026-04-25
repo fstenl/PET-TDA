@@ -11,7 +11,7 @@ from src.representation.mlem import reconstruct_mlem
 from src.tda.persistence import compute_persistence_volume
 from src.tda.distances import compute_distance_matrix
 from src.tda.clustering import cluster_distance_matrix, dice_score
-from src.utils.visualization import plot_distance_matrix
+from src.utils.visualization2 import plot_distance_matrix
 
 device = 'cpu'
 img_shape = (8, 40, 40)

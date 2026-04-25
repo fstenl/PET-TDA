@@ -7,7 +7,7 @@ from src.simulation.listmode import sample_events, indices_to_sinogram
 from src.representation.mlem import reconstruct_mlem
 from src.tda.persistence import compute_persistence_volume
 from src.tda.distances import compute_distance_matrix
-from src.utils.visualization import (
+from src.utils.visualization2 import (
     plot_phantom_frame,
     plot_sinogram,
     plot_reconstruction,

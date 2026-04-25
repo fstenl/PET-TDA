@@ -19,51 +19,31 @@ def save_or_show(fig, path=None):
         plt.show()
 
 
-def plot_volume(frames, slice_idx=None, max_frames=None, title="", path=None):
-    """Plot center z-slices of a sequence of 3D volumes in a grid.
+def plot_phantom_frame(phantom, frame=0, path=None):
+    """Plot z, y, and x center slices of a phantom frame.
 
     Args:
-        frames (torch.Tensor): Volume series of shape (num_frames, Nz, Ny, Nx).
-        slice_idx (int | None): z-slice index to show. Defaults to center slice.
-        max_frames (int | None): Maximum number of frames to show. If None, shows all.
-        title (str): Overall plot title.
+        phantom (torch.Tensor): Phase series of shape (num_frames, Nz, Ny, Nx).
+        frame (int): Frame index to visualize.
         path (str | None): File path to save to. If None, shows interactively.
     """
-    frames = frames.cpu()
-    num_frames = frames.shape[0]
+    vol = phantom[frame].cpu()
+    nz, ny, nx = vol.shape
 
-    if max_frames is not None:
-        num_frames = min(num_frames, max_frames)
-        frames = frames[:num_frames]
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    fig.suptitle(f"Phantom frame {frame}")
 
-    if slice_idx is None:
-        slice_idx = frames.shape[1] // 2
+    axes[0].imshow(vol[nz // 2, :, :], cmap='hot')
+    axes[0].set_title("z slice")
 
-    cols = min(5, num_frames)
-    rows = -(-num_frames // cols)  # ceiling division
+    axes[1].imshow(vol[:, ny // 2, :], cmap='hot')
+    axes[1].set_title("y slice")
 
-    vmax = float(frames.max())
+    axes[2].imshow(vol[:, :, nx // 2], cmap='hot')
+    axes[2].set_title("x slice")
 
-    fig, axes = plt.subplots(rows, cols, figsize=(3 * cols, 3 * rows))
-    axes = np.array(axes).reshape(rows, cols)
-
-    for i in range(rows):
-        for j in range(cols):
-            frame_idx = i * cols + j
-            ax = axes[i][j]
-
-            if frame_idx < num_frames:
-                ax.imshow(frames[frame_idx, slice_idx, :, :],
-                          cmap='Greys_r', vmin=0, vmax=vmax)
-                ax.set_title(f"frame {frame_idx}", fontsize='small')
-            else:
-                ax.set_axis_off()
-
-            ax.set_xticks([])
-            ax.set_yticks([])
-
-    if title:
-        fig.suptitle(title)
+    for ax in axes:
+        ax.axis('off')
 
     plt.tight_layout()
     save_or_show(fig, path)
@@ -96,7 +76,6 @@ def plot_sinogram(sinogram, max_planes=10, max_tofbins=9, path=None):
         cols = min(5, -(-num_planes // 4))
 
     vmax = float(sino.max())
-
     fig, axes = plt.subplots(rows, cols, figsize=(1.8 * cols, 1.5 * rows),
                              sharex=True, sharey=True)
     axes = axes.reshape(rows, cols) if rows > 1 or cols > 1 else [[axes]]
@@ -145,10 +124,10 @@ def plot_sinogram(sinogram, max_planes=10, max_tofbins=9, path=None):
 
 
 def plot_pointcloud(points, max_points=50_000, path=None):
-    """Plot a 3D scatter of point coordinates.
+    """Plot a 3D scatter of TOF bin center coordinates.
 
     Args:
-        points (torch.Tensor): Point coordinates of shape (N, 3).
+        points (torch.Tensor): TOF bin center coordinates of shape (N, 3).
         max_points (int): Maximum number of points to plot for performance.
         path (str | None): File path to save to. If None, shows interactively.
     """
@@ -161,10 +140,39 @@ def plot_pointcloud(points, max_points=50_000, path=None):
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(pts[:, 2], pts[:, 1], pts[:, 0], s=0.1, alpha=0.3, c='steelblue')
-    ax.set_title("Point cloud")
+    ax.set_title("TOF point cloud")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
+
+    plt.tight_layout()
+    save_or_show(fig, path)
+
+
+def plot_reconstruction(image, path=None):
+    """Plot z, y, and x center slices of a reconstructed image.
+
+    Args:
+        image (torch.Tensor): Reconstructed image of shape (Nz, Ny, Nx).
+        path (str | None): File path to save to. If None, shows interactively.
+    """
+    vol = image.cpu()
+    nz, ny, nx = vol.shape
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    fig.suptitle("MLEM reconstruction")
+
+    axes[0].imshow(vol[nz // 2, :, :], cmap='hot')
+    axes[0].set_title("z slice")
+
+    axes[1].imshow(vol[:, ny // 2, :], cmap='hot')
+    axes[1].set_title("y slice")
+
+    axes[2].imshow(vol[:, :, nx // 2], cmap='hot')
+    axes[2].set_title("x slice")
+
+    for ax in axes:
+        ax.axis('off')
 
     plt.tight_layout()
     save_or_show(fig, path)

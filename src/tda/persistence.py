@@ -306,7 +306,9 @@ def _per_frame_betti_curves(clouds, method, max_dim, method_kwargs):
     method_kwargs = dict(method_kwargs or {})
     method_kwargs.setdefault('max_dim', max_dim)
 
-    pcfs_per_dim = [mpcf.zeros((n_frames,)) for _ in range(max_dim + 1)]
+    pcfs_per_dim = [
+        mpcf.zeros((n_frames,), dtype=mpcf.pcf64) for _ in range(max_dim + 1)
+    ]
 
     for f_idx, cloud in enumerate(clouds):
         print(f"[gating/{method}] frame {f_idx + 1}/{n_frames}")
@@ -409,7 +411,9 @@ def compute_frame_pcfs_volume(
 
     volumes = list(volumes)
     n_frames = len(volumes)
-    pcfs_per_dim = [mpcf.zeros((n_frames,)) for _ in range(max_dim + 1)]
+    pcfs_per_dim = [
+        mpcf.zeros((n_frames,), dtype=mpcf.pcf64) for _ in range(max_dim + 1)
+    ]
 
     for f_idx, volume in enumerate(volumes):
         print(f"[mlem/{summary}] frame {f_idx + 1}/{n_frames}")

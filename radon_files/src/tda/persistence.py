@@ -30,25 +30,62 @@ def compute_persistence_pointcloud(points, max_dim=1):
     return result['dgms']
 
 
-def compute_persistence_volume(volume, max_dim=2):
+def compute_persistence_volume(
+    volume,
+    max_dim=2,
+    *,
+    filtration='superlevel',
+    smooth_sigma=None,
+    normalize=True,
+    min_persistence=0.0,
+):
     """Compute persistence diagrams from an image volume using cubical homology.
-
-    Sublevel-set filtration is applied, meaning topological features are tracked
-    as the intensity threshold increases from min to max voxel value. Infinite
-    death times are removed before returning.
-
     Args:
         volume (torch.Tensor or np.ndarray): Image volume of shape (N0, N1, ...).
         max_dim (int): Maximum homology dimension to compute.
+        filtration ({'superlevel', 'sublevel'}): Filtration direction. PET
+            activity sits in high-intensity regions, so 'superlevel' (cubical
+            on -volume, sign of birth/death flipped back) tracks hotspots and
+            usually gives a stronger inter-frame signal. 'sublevel' is the
+            classic low-to-high pass.
+        smooth_sigma (float | None): If given, Gaussian-smooth the volume with
+            this sigma (in voxels) before the filtration to suppress
+            voxel-scale MLEM noise.
+        normalize (bool): Rescale the (smoothed) volume to [0, 1] so that
+            birth/death scales are comparable across frames and event counts.
+        min_persistence (float): Drop features with death - birth strictly
+            below this value.
 
     Returns:
         list[np.ndarray]: Persistence diagrams, one array per dimension.
     """
     if isinstance(volume, torch.Tensor):
         volume = volume.detach().cpu().numpy()
+    volume = np.asarray(volume, dtype=np.float32)
 
-    cubical = gudhi.CubicalComplex(top_dimensional_cells=volume)
-    cubical.compute_persistence()
+    if smooth_sigma is not None and smooth_sigma > 0:
+        from scipy.ndimage import gaussian_filter
+        volume = gaussian_filter(volume, sigma=smooth_sigma)
+
+    if normalize:
+        vmin = float(volume.min())
+        vmax = float(volume.max())
+        if vmax > vmin:
+            volume = (volume - vmin) / (vmax - vmin)
+        else:
+            volume = np.zeros_like(volume)
+
+    if filtration == 'superlevel':
+        cells = -volume
+    elif filtration == 'sublevel':
+        cells = volume
+    else:
+        raise ValueError(
+            f"filtration must be 'superlevel' or 'sublevel', got {filtration!r}"
+        )
+
+    cubical = gudhi.CubicalComplex(top_dimensional_cells=cells)
+    cubical.compute_persistence(min_persistence=int(min_persistence))
 
     diagrams = []
     for dim in range(max_dim + 1):
@@ -56,6 +93,9 @@ def compute_persistence_volume(volume, max_dim=2):
         if len(pairs) > 0:
             pairs = np.array(pairs)
             pairs = pairs[np.isfinite(pairs).all(axis=1)]
+            if filtration == 'superlevel' and len(pairs) > 0:
+                # Negate and swap so (birth, death) is increasing again.
+                pairs = np.stack([-pairs[:, 1], -pairs[:, 0]], axis=1)
             diagrams.append(pairs)
         else:
             diagrams.append(np.empty((0, 2)))
@@ -319,3 +359,67 @@ def compute_frame_pcfs(event_frames, proj, method='masspcf', max_dim=1,
         max_dim=max_dim,
         method_kwargs=method_kwargs or {},
     )
+
+
+def compute_frame_pcfs_volume(
+    volumes,
+    summary='betti',
+    max_dim=1,
+    persistence_kwargs=None,
+):
+    """Compute PCF summaries of cubical persistence diagrams across frames.
+
+    Mirrors compute_frame_pcfs but starts from reconstructed volumes (cubical
+    persistence) instead of point clouds (Vietoris-Rips / witness). Returns one
+    masspcf PcfTensor per homology dimension, indexed by frame, ready for
+    compute_pcf_distance_matrix.
+
+    Args:
+        volumes (iterable): Per-frame image volumes (torch.Tensor or
+            np.ndarray, shape (N0, N1, ...)).
+        summary ({'betti', 'stable_rank'}): Which PCF to extract from each
+            barcode.
+        max_dim (int): Maximum homology dimension to compute.
+        persistence_kwargs (dict | None): Forwarded to
+            compute_persistence_volume (e.g. filtration, smooth_sigma,
+            normalize, min_persistence).
+
+    Returns:
+        list: One masspcf PcfTensor per homology dimension.
+    """
+    import masspcf as mpcf
+    from masspcf.persistence import (
+        Barcode,
+        barcode_to_betti_curve,
+        barcode_to_stable_rank,
+    )
+
+    summary_fns = {
+        'betti': barcode_to_betti_curve,
+        'stable_rank': barcode_to_stable_rank,
+    }
+    try:
+        summary_fn = summary_fns[summary]
+    except KeyError as exc:
+        raise ValueError(
+            f"summary must be one of {sorted(summary_fns)}, got {summary!r}"
+        ) from exc
+
+    persistence_kwargs = dict(persistence_kwargs or {})
+
+    volumes = list(volumes)
+    n_frames = len(volumes)
+    pcfs_per_dim = [mpcf.zeros((n_frames,)) for _ in range(max_dim + 1)]
+
+    for f_idx, volume in enumerate(volumes):
+        print(f"[mlem/{summary}] frame {f_idx + 1}/{n_frames}")
+        dgms = compute_persistence_volume(
+            volume, max_dim=max_dim, **persistence_kwargs
+        )
+        for d, dgm in enumerate(dgms):
+            if len(dgm) == 0:
+                continue
+            bc = Barcode(dgm.astype(np.float64))
+            pcfs_per_dim[d][f_idx] = summary_fn(bc)
+
+    return pcfs_per_dim

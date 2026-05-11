@@ -135,7 +135,85 @@ def visualise_sinogram(x_fwd, show: bool = True):
     if show:
         plt.show()
 
+def visualize_frames_overview(image, slice_z: int = None, show: bool = True):
+    """Show one axial slice per frame for the first 10 frames of the xcat phantom."""
+    num_frames = min(10, image.shape[0])
+    dim_z = image.shape[1]
+    
+    if slice_z is None:
+        slice_z = dim_z // 2  # Default to middle slice
 
+    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+    fig.suptitle(f"Axial slice Z={slice_z} across {num_frames} frames", fontsize=14)
+
+    for i, ax in enumerate(axes.ravel()):
+        if i < num_frames:
+            slice_data = image[i, slice_z, :, :]
+            ax.imshow(slice_data, cmap='gray', origin='lower', aspect='auto')
+            ax.set_title(f"Frame {i}")
+            ax.axis('off')
+        else:
+            ax.set_axis_off()
+
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+def visualize_frames_coronal_cropped(image, slice_y: int = None, z_start: int = 330, z_end: int = 385, show: bool = True):
+    """Show one coronal slice per frame for the first 10 frames, cropped to the axial range used for projection."""
+    num_frames = min(10, image.shape[0])
+    dim_y = image.shape[2]
+
+    if slice_y is None:
+        slice_y = dim_y // 2
+
+    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+    fig.suptitle(f"Coronal slice Y={slice_y}, Z={z_start}:{z_end} across {num_frames} frames", fontsize=14)
+
+    for i, ax in enumerate(axes.ravel()):
+        if i < num_frames:
+            # Coronal plane is image[frame, z, y, x] → slice at fixed y, crop z
+            slice_data = image[i, z_start:z_end, slice_y, :]
+            ax.imshow(slice_data, cmap='gray', origin='lower', aspect='auto')
+            ax.set_title(f"Frame {i}")
+            ax.axis('off')
+        else:
+            ax.set_axis_off()
+
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+import matplotlib.animation as animation
+
+def save_frames_coronal_gif(image, slice_y: int = None, z_start: int = 330, z_end: int = 385, 
+                             fps: int = 4, output_path: str = "frames.gif"):
+    """Save coronal slices across frames as an animated GIF."""
+    num_frames = min(20, image.shape[0])
+    dim_y = image.shape[2]
+
+    if slice_y is None:
+        slice_y = dim_y // 2
+    slice_y = min(slice_y, dim_y - 1)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.axis('off')
+
+    first_slice = image[0, z_start:z_end, slice_y, :]
+    im = ax.imshow(first_slice, cmap='gray', origin='lower', aspect='auto',
+                   vmin=image[:num_frames, z_start:z_end, slice_y, :].min(),
+                   vmax=image[:num_frames, z_start:z_end, slice_y, :].max())
+    title = ax.set_title("Frame 0")
+
+    def update(i):
+        im.set_data(image[i, z_start:z_end, slice_y, :])
+        title.set_text(f"Frame {i}")
+        return [im, title]
+
+    ani = animation.FuncAnimation(fig, update, frames=num_frames, blit=True)
+    ani.save(output_path, writer='pillow', fps=fps)
+    plt.close(fig)
+    print(f"Saved GIF to {output_path}")
 if __name__ == "__main__":
     dev = get_device()
     print(f"Using device: {dev}")
@@ -150,9 +228,13 @@ if __name__ == "__main__":
     out_shape = proj.out_shape
 
     print(f"Out Shape: {out_shape}")
-
+    
+    #visualize_frames_overview(xcat, slice_z=357, show=True)
+    #visualize_frames_coronal_cropped(xcat, slice_y=64, z_start=280, z_end=385, show=True)
     #forward_proj = proj(image_to_project)
     #visualise_sinogram(forward_proj, show= True)
+
+    save_frames_coronal_gif(xcat, slice_y=63, z_start=270, z_end=385, fps=4, output_path="coronal_frames.gif")
 
 
 

@@ -17,8 +17,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
 from src.utils.device import get_device
-from src.phantom.generator import generate_moving_sphere
-from src.simulation.scanner import get_mini_projector
+from src.phantom.generator import load_xcat
+from src.simulation.scanner import get_mct_projector
 from src.simulation.listmode import sample_events, indices_to_sinogram
 from src.representation.mlem import reconstruct_mlem
 from src.tda.persistence import (
@@ -33,6 +33,9 @@ from src.utils.visualization import (
     plot_phantom_frame,
     plot_distance_matrix,
 )
+
+
+XCAT_PATH = '../data/respiratory_only.npy'
 
 
 FIG_STYLE = {
@@ -90,14 +93,13 @@ def _frame_distance_matrix(volumes, summary, max_dim, persistence_kwargs):
 
 
 def run_mlem_tda(
-    num_phases: int = 10,
-    num_cycles: int = 2,
-    num_events_per_frame: int = 25000,
+    num_frames: int = 20,
+    num_events_per_frame: int = 35000,
     num_iterations: int = 4,
-    img_shape: tuple = (20, 80, 80),
     summary: str = 'stable_rank',
     max_dim: int = 1,
     persistence_kwargs: dict | None = None,
+    xcat_path: str = XCAT_PATH,
     save_dir: str | None = None,
 ) -> None:
     print("=" * 60)
@@ -106,17 +108,15 @@ def run_mlem_tda(
 
     device = get_device()
 
-    phantom = generate_moving_sphere(
-        num_phases=num_phases,
-        num_cycles=num_cycles,
-        img_shape=img_shape,
-        device=device,
-    )
-    num_frames = phantom.shape[0]
+    print(f"Loading XCAT phantom from {xcat_path}")
+    full = load_xcat(xcat_path, device=device)
+    phantom = full[:num_frames, 300:300 + 109, :, :]
     print(f"Phantom shape: {phantom.shape}")
     plot_phantom_frame(phantom, frame=0)
 
-    proj = get_mini_projector(device=device, img_shape=img_shape, tof=True)
+    proj = get_mct_projector(
+        device=device, img_shape=tuple(phantom.shape[1:]), tof=True
+    )
 
     reconstructions = []
     for frame_idx in range(num_frames):
@@ -174,16 +174,15 @@ def run_mlem_tda(
 
 
 def intra_variability_mlem_tda(
-    num_phases: int = 10,
-    num_cycles: int = 1,
-    num_events_per_frame: int = 25000,
+    num_frames: int = 10,
+    num_events_per_frame: int = 35000,
     num_iterations: int = 4,
     num_samples: int = 5,
     ref_frame: int = 0,
-    img_shape: tuple = (20, 80, 80),
     summary: str = 'stable_rank',
     max_dim: int = 1,
     persistence_kwargs: dict | None = None,
+    xcat_path: str = XCAT_PATH,
     save_dir: str | None = None,
 ) -> None:
     print("=" * 60)
@@ -198,16 +197,14 @@ def intra_variability_mlem_tda(
 
     device = get_device()
 
-    phantom = generate_moving_sphere(
-        num_phases=num_phases,
-        num_cycles=num_cycles,
-        img_shape=img_shape,
-        device=device,
-    )
-    num_frames = phantom.shape[0]
+    print(f"Loading XCAT phantom from {xcat_path}")
+    full = load_xcat(xcat_path, device=device)
+    phantom = full[:num_frames, 300:300 + 109, :, :]
     print(f"Phantom shape: {phantom.shape}")
 
-    proj = get_mini_projector(device=device, img_shape=img_shape, tof=True)
+    proj = get_mct_projector(
+        device=device, img_shape=tuple(phantom.shape[1:]), tof=True
+    )
 
     total_jobs = num_frames * num_samples
     print(
@@ -305,8 +302,7 @@ def intra_variability_mlem_tda(
 
 if __name__ == "__main__":
     run_mlem_tda(
-        num_phases=10,
-        num_cycles=2,
+        num_frames=20,
         summary='stable_rank',
         persistence_kwargs={
             'filtration': 'superlevel',

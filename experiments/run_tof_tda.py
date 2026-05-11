@@ -30,7 +30,7 @@ FIG_STYLE = {
     'legend.fontsize': 11,
 }
 
-XCAT_PATH = '../../../data/respiratory_only.npy'
+XCAT_PATH = '../data/respiratory_only.npy'
 
 
 def _save_or_show(fig, save_path=None):

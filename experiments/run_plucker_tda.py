@@ -46,7 +46,7 @@ hom_dim = 1
 # This is the minimum Euclidean distance between LORs in the 6D (p1, p2) space.
 # Increase this value to heavily reduce the point cloud size.
 min_distance = 30.0 
-xcat_path = '../../../data/respiratory_only.npy'
+xcat_path = '../data/respiratory_only.npy'
 
 print(f"Loading XCAT phantom from {xcat_path}")
 full = load_xcat(xcat_path, device=device)

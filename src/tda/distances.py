@@ -65,3 +65,26 @@ def compute_distance_matrix(diagrams, method='wasserstein', hom_dim=1):
             dist_matrix[j, i] = d
 
     return dist_matrix
+
+
+def compute_pcf_distance_matrix(pcf_tensors):
+    """All-pairs L2 distance matrix between Betti-curve PCFs.
+
+    Uses masspcf.pdist (exact L2 distance between piecewise-constant functions)
+    per homology dimension, then sums so both H0 (connectivity) and H1 (loops)
+    contribute.
+
+    Args:
+        pcf_tensors (list): One masspcf PcfTensor per homology dimension, as
+            returned by src.tda.persistence.compute_frame_pcfs.
+
+    Returns:
+        np.ndarray: Symmetric distance matrix of shape (num_frames, num_frames).
+    """
+    from masspcf import pdist
+
+    dist_matrix = None
+    for pcf_tensor in pcf_tensors:
+        d = pdist(pcf_tensor, p=2).to_dense()
+        dist_matrix = d if dist_matrix is None else dist_matrix + d
+    return dist_matrix

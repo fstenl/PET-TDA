@@ -10,6 +10,7 @@ matrix. Supports three summary modes:
 """
 
 import os
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -301,6 +302,7 @@ def intra_variability_mlem_tda(
 
 
 if __name__ == "__main__":
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     run_mlem_tda(
         num_frames=20,
         summary='stable_rank',
@@ -309,5 +311,17 @@ if __name__ == "__main__":
             'smooth_sigma': 1.0,
             'normalize': True,
         },
-        save_dir='figures/run_mlem_tda',
+        save_dir=f"figures/run_mlem_tda_{timestamp}",
     )
+    # intra_variability_mlem_tda(
+    #     num_frames=10,
+    #     num_samples=5,
+    #     ref_frame=0,
+    #     summary='stable_rank',
+    #     persistence_kwargs={
+    #         'filtration': 'superlevel',
+    #         'smooth_sigma': 1.0,
+    #         'normalize': True,
+    #     },
+    #     save_dir=f"figures/intra_variability_mlem_tda_{timestamp}",
+    # )

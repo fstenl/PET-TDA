@@ -3,6 +3,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from datetime import datetime
 from pathlib import Path
 
 from src.phantom.generator import load_xcat
@@ -27,7 +28,7 @@ iterations_to_test = [5, 10, 20, 50, 100]
 num_phases = 10
 num_cycles = 2
 
-results_dir = Path('results/mlem_iterations_xcat')
+results_dir = Path(f"results/mlem_iterations_xcat_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 results_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Ground truth ---

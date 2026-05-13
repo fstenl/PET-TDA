@@ -85,7 +85,7 @@ def compute_persistence_volume(
         )
 
     cubical = gudhi.CubicalComplex(top_dimensional_cells=cells)
-    cubical.compute_persistence(min_persistence=int(min_persistence))
+    cubical.compute_persistence(min_persistence=min_persistence)
 
     diagrams = []
     for dim in range(max_dim + 1):

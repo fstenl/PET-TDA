@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -227,11 +228,18 @@ def intra_variability_tof_tda(
 
 
 if __name__ == "__main__":
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     intra_variability_tof_tda(
         num_frames=20,
         num_events_per_frame=35000,
         num_samples=5,
         ref_frame=0,
         gating_method='masspcf',
-        save_dir='figures/intra_variability_tof_tda',
+        save_dir=f"figures/intra_variability_tof_tda_{timestamp}",
     )
+    # run_tof_tda(
+    #     num_frames=20,
+    #     num_events_per_frame=35000,
+    #     gating_method='masspcf',
+    #     save_dir=f"figures/run_tof_tda_{timestamp}",
+    # )
